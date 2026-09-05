@@ -1,15 +1,25 @@
 import pygame as pg
 from random import randint
+import sounddevice as sd
+import numpy as np
 
 WIDTH, HEIGHT = 1200, 800
 GAP_SIZE = 280
 PIPE_WIDTH = 140
+THRESH = 0.02
+
+mic_level = 0
+
+def audio_cb(indata, frames, time, status):
+    global mic_level
+    rms = np.sqrt(np.mean(indata ** 2))
+    miclevel = 0.5 * mic_level + 0.35 * rms
 
 class Game:
     def __init__(self):
         pg.init()
         pg.mixer.init()
-        self.screen = pg.deisplay.set_mode((WIDTH, HEIGHT))
+        self.screen = pg.display.set_mode((WIDTH, HEIGHT))
         self.clock = pg.tie.Clock()
         self.font = pg.font.Font(None, 80)
 
@@ -17,6 +27,10 @@ class Game:
         self.bg = pg.transform.scale(pg.image.load('images/background.png'),(WIDTH, HEIGHT))
         self.bird_img = pg.transform.scale(pg.image.load('images/player.png'), (90, 70))
         self.pipe.img = pg.image.load('images/pipe.png')
+
+        self.snd_flap = pg.mixer.Sound('sound/flap.ogg')
+        self.snd_cousin = pg.mixer.Sound('sounds/coin.ogg')
+        self.snd_collision = pg.mixer.Sound('sound/collision.ogg')
 
         self.reset()
     def reset(self):
@@ -44,9 +58,15 @@ class Game:
             self.vel = self.jump
 
     def update(self):
-        if not self.lose:
-            self.vel += self.gravity
-            self.bird.y += self.vel
+        if mic_level > THRESH:
+            if self.vel >= 0:
+                self.snd_flap.play()
+            self.vel = self.jump
+        else:
+            self.vel +=self.gravity
+        #if not self.lose:
+        #self.vel += self.gravity
+            #self.bird.y += self.vel
 
         if self.bird.bottom > HEIGHT or self.bird.top <0:
             self.lose = True
@@ -54,7 +74,7 @@ class Game:
         for p in self.pipes[:]:
             p['top'].x -= 8
             p['bot'].x -= 8
-            if self.bird.colliderect(p['top']) or self.bird.colliderect(p['bot'])
+            if self.bird.colliderect(p['top']) or self.bird.colliderect(p['bot']):
                 self.lose = True
             if not p['passed'] and p['top'].right < self.bird.left:
                 self.score += 1
@@ -63,8 +83,8 @@ class Game:
         self.pipes = [p for p in self.pipes if p['top'].right > 0]
         if len(self.pipes) <4:
             self.spawn_pipe(self.pipes[-1]['top'].x + 600)
-    else:
-    self.bird.y +=10
+        else:
+            self.bird.y += 10
 
     def draw(self):
         self.screen.blit(self.bg, (0, 0))
@@ -96,3 +116,20 @@ while True:
                 game.reset()
 
     game.clock.tick(60)
+
+with sd.InputStream(callback=audio.cb):
+    while True:
+        game.update()
+        game.draw()
+        pg.display.update()
+
+        for e in pg.event.get():
+            if e.type == pg.QUIT:
+                exit()
+
+            if e.type == pg.KEYDOWN and e.key == pg.K_r:
+                game.reset()
+        if game.lose and mic_level > THRESH * 4:
+            game.reset()
+
+        game.clock.tick(60)
